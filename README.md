@@ -4,7 +4,7 @@ Link for Developing: https://husteduvn-my.sharepoint.com/:f:/g/personal/anh_leha
 
 [![GitHub Stars](https://img.shields.io/github/stars/HaiAnh-X/Registers-Merging?style=social)](https://github.com/HaiAnh-X/Registers-Merging)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
+
 
 ## 📝 Introduction
 
