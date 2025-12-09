@@ -8,8 +8,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import random
 from dynamic_vit_viz import vit_register_dynamic_viz
-from cifar_train import train_model
-from cifar_test import test_model
+
 from custom_summary import custom_summary
 from tqdm import tqdm
 import utils
@@ -23,22 +22,40 @@ model = vit_register_dynamic_viz(img_size=224, patch_size=16, in_chans=3, num_cl
 
 custom_summary(model, (3, 224, 224))
 
+best_model_path = 'best_model.pth'
+model.load_state_dict(torch.load(best_model_path))
 
 # Move the model to GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-best_model_path = 'best_model.pth'
 
 # Load the best model for evaluation
-model.load_state_dict(torch.load(best_model_path))
-model.eval()
-correct = 0
-total = 0
-
 runs = 50
 batch_size = 64  # Lower this if you don't have that much memory
 input_size = model.default_cfg["input_size"]
 
-vit_tome.apply_patch(model)
 
+
+# Baseline benchmark
+baseline_throughput = utils.benchmark(
+    model,
+    device=device,
+    verbose=True,
+    runs=runs,
+    batch_size=batch_size,
+    input_size=input_size
+)
+
+vit_tome.apply_patch(model)
+# ToMe with r=16
+model.r = 17
+tome_throughput = utils.benchmark(
+    model,
+    device=device,
+    verbose=True,
+    runs=runs,
+    batch_size=batch_size,
+    input_size=input_size
+)
+print(f"Throughput improvement: {tome_throughput / baseline_throughput:.2f}x")

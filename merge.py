@@ -19,42 +19,35 @@ def bipartite_soft_matching(
     metric: torch.Tensor,
     r: int,
     class_token: bool = False,
-    distill_token: bool = False,
+    num_register_tokens: int = 0,
 ) -> Tuple[Callable, Callable]:
-    """
-    Applies ToMe with a balanced matching set (50%, 50%).
-
-    Input size is [batch, tokens, channels].
-    r indicates the number of tokens to remove (max 50% of tokens).
-
-    Extra args:
-     - class_token: Whether or not there's a class token.
-     - distill_token: Whether or not there's also a distillation token.
-
-    When enabled, the class token and distillation tokens won't get merged.
-    """
+    
     protected = 0
     if class_token:
         protected += 1
-    if distill_token:
-        protected += 1
+    protected += num_register_tokens
 
     # We can only reduce by a maximum of 50% tokens
     t = metric.shape[1]
-    r = min(r, (t - protected) // 2)
+
+    if protected > 0:
+        special_metric = metric[:, :protected, :]
+        patch_metric = metric[:, protected:, :]
+    else:
+        patch_metric = metric
+    
+    t_patch = patch_metric.shape[1]
+
+    r = min(r, (t_patch) // 2)
 
     if r <= 0:
         return do_nothing, do_nothing
 
     with torch.no_grad():
-        metric = metric / metric.norm(dim=-1, keepdim=True)
-        a, b = metric[..., ::2, :], metric[..., 1::2, :]
-        scores = a @ b.transpose(-1, -2)
+        patch_metric = patch_metric / patch_metric.norm(dim=-1, keepdim=True)
 
-        if class_token:
-            scores[..., 0, :] = -math.inf
-        if distill_token:
-            scores[..., :, 0] = -math.inf
+        a, b = patch_metric[..., ::2, :], patch_metric[..., 1::2, :]
+        scores = a @ b.transpose(-1, -2)
 
         node_max, node_idx = scores.max(dim=-1)
         edge_idx = node_max.argsort(dim=-1, descending=True)[..., None]
@@ -63,34 +56,50 @@ def bipartite_soft_matching(
         src_idx = edge_idx[..., :r, :]  # Merged Tokens
         dst_idx = node_idx[..., None].gather(dim=-2, index=src_idx)
 
-        if class_token:
-            # Sort to ensure the class token is at the start
-            unm_idx = unm_idx.sort(dim=1)[0]
-
     def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
-        src, dst = x[..., ::2, :], x[..., 1::2, :]
+        if protected > 0:
+            x_special = x[..., :protected, :]
+            x_patch = x[..., protected:, :]
+        else:
+            x_patch = x
+        
+        src, dst = x_patch[..., ::2, :], x_patch[..., 1::2, :]
         n, t1, c = src.shape
         unm = src.gather(dim=-2, index=unm_idx.expand(n, t1 - r, c))
         src = src.gather(dim=-2, index=src_idx.expand(n, r, c))
-        dst = dst.scatter_reduce(-2, dst_idx.expand(n, r, c), src, reduce=mode)
 
-        if distill_token:
-            return torch.cat([unm[:, :1], dst[:, :1], unm[:, 1:], dst[:, 1:]], dim=1)
+        dst = dst.scatter_reduce(-2, dst_idx.expand(n, r, c), src, reduce=mode)
+        merged_patch = torch.cat([unm, dst], dim=-2)
+        if protected > 0:
+            return torch.cat([x_special, merged_patch], dim=-2)
         else:
-            return torch.cat([unm, dst], dim=1)
+            return merged_patch
+      
 
     def unmerge(x: torch.Tensor) -> torch.Tensor:
+        if protected > 0:
+            x_special = x[..., :protected, :]
+            x_merged_patch = x[..., protected:, :]
+        else:
+            x_merged_patch = x
+
         unm_len = unm_idx.shape[1]
-        unm, dst = x[..., :unm_len, :], x[..., unm_len:, :]
+        unm, dst = x_merged_patch[..., :unm_len, :], x_merged_patch[..., unm_len:, :]
         n, _, c = unm.shape
 
         src = dst.gather(dim=-2, index=dst_idx.expand(n, r, c))
 
-        out = torch.zeros(n, metric.shape[1], c, device=x.device, dtype=x.dtype)
-
-        out[..., 1::2, :] = dst
-        out.scatter_(dim=-2, index=(2 * unm_idx).expand(n, unm_len, c), src=unm)
-        out.scatter_(dim=-2, index=(2 * src_idx).expand(n, r, c), src=src)
+        out = torch.zeros(n, t, c, device=x.device, dtype=x.dtype)
+        if protected > 0:
+            out[..., :protected, :] = x_special
+        
+        um_indices_orig = protected + 2*unm_idx
+        src_indices_orig = protected + 2*src_idx
+        dst_indices_orig = protected + 1 + 2*torch.arrange(dst.shape[1], device=x.device).unsqueeze(0).unsqueeze(-1)
+            
+        out.scatter_(dim=1, index=um_indices_orig.expand(n, unm_len, c), src=unm)
+        out.scatter_(dim=1, index=src_indices_orig.expand(n, r, c), src=src)
+        out.scatter_(dim=1, index=dst_indices_orig.expand(n, dst.shape[1], c), src=dst)
 
         return out
 
