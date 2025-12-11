@@ -64,100 +64,6 @@ class Block(nn.Module):
         return x
 
 
-class Layer_scale_init_Block(nn.Module):
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, Attention_block=Attention, Mlp_block=Mlp, init_values=1e-4):
-        super().__init__()
-        self.norm1 = norm_layer(dim)
-        self.norm11 = norm_layer(dim)
-        self.attn = Attention_block(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        self.attn1 = Attention_block(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        self.drop_path = DropPath(
-            drop_path) if drop_path > 0. else nn.Identity()
-        self.norm2 = norm_layer(dim)
-        self.norm21 = norm_layer(dim)
-        mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp_block(
-            in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
-        self.mlp1 = Mlp_block(
-            in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
-        self.gamma_1 = nn.Parameter(
-            init_values * torch.ones((dim)), requires_grad=True)
-        self.gamma_1_1 = nn.Parameter(
-            init_values * torch.ones((dim)), requires_grad=True)
-        self.gamma_2 = nn.Parameter(
-            init_values * torch.ones((dim)), requires_grad=True)
-        self.gamma_2_1 = nn.Parameter(
-            init_values * torch.ones((dim)), requires_grad=True)
-
-    def forward(self, x):
-        x = x + self.drop_path(self.gamma_1*self.attn(self.norm1(x))[0]) + \
-            self.drop_path(self.gamma_1_1 * self.attn1(self.norm11(x))[0])
-        x = x + self.drop_path(self.gamma_2 * self.mlp(self.norm2(x))) + \
-            self.drop_path(self.gamma_2_1 * self.mlp1(self.norm21(x)))
-        return x
-
-
-class Block_paralx2(nn.Module):
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, Attention_block=Attention, Mlp_block=Mlp, init_values=1e-4):
-        super().__init__()
-        self.norm1 = norm_layer(dim)
-        self.norm11 = norm_layer(dim)
-        self.attn = Attention_block(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        self.attn1 = Attention_block(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        self.drop_path = DropPath(
-            drop_path) if drop_path > 0. else nn.Identity()
-        self.norm2 = norm_layer(dim)
-        self.norm21 = norm_layer(dim)
-        mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp_block(
-            in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
-        self.mlp1 = Mlp_block(
-            in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
-
-    def forward(self, x):
-        x = x + self.drop_path(self.attn(self.norm1(x))[0]) + \
-            self.drop_path(self.attn1(self.norm11(x))[0])
-        x = x + self.drop_path(self.mlp(self.norm2(x))) + \
-            self.drop_path(self.mlp1(self.norm21(x)))
-        return x
-
-
-class hMLP_stem(nn.Module):
-    def __init__(self, img_size=224,  patch_size=16, in_chans=3, embed_dim=768, norm_layer=nn.SyncBatchNorm):
-        super().__init__()
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        num_patches = (img_size[1] // patch_size[1]) * \
-            (img_size[0] // patch_size[0])
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.num_patches = num_patches
-        self.proj = torch.nn.Sequential(*[nn.Conv2d(in_chans, embed_dim//4, kernel_size=4, stride=4),
-                                          norm_layer(embed_dim//4),
-                                          nn.GELU(),
-                                          nn.Conv2d(
-                                              embed_dim//4, embed_dim//4, kernel_size=2, stride=2),
-                                          norm_layer(embed_dim//4),
-                                          nn.GELU(),
-                                          nn.Conv2d(
-                                              embed_dim//4, embed_dim, kernel_size=2, stride=2),
-                                          norm_layer(embed_dim),
-                                          ])
-
-    def forward(self, x):
-        B, C, H, W = x.shape
-        x = self.proj(x).flatten(2).transpose(1, 2)
-        return x
-
-
 class vit_register_dynamic_viz(nn.Module):
     default_cfg = _cfg("vit_register_dynamic_viz", input_size=(3, 224, 224), pool_size=None, crop_pct=0.9)
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
@@ -253,10 +159,10 @@ class vit_register_dynamic_viz(nn.Module):
         x, cls_tokens, register_tokens = self.prepare_tokens(x)
         # Pass the token sequence through each transformer block
         for i, blk in enumerate(self.blocks):
-            if i == reg_pos and register_tokens is not None:
-                x = torch.cat((x, register_tokens), dim=1)
-            if i == cls_pos:
-                x = torch.cat((cls_tokens, x), dim=1)
+            # if i == reg_pos and register_tokens is not None:
+            #     x = torch.cat((x, register_tokens), dim=1)
+            # if i == cls_pos:
+            #     x = torch.cat((cls_tokens, x), dim=1)
             x = blk(x)
 
         # Apply layer normalization to the output of the last transformer block
