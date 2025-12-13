@@ -76,7 +76,7 @@ loss_fn = nn.CrossEntropyLoss()
 optimizer = optim.AdamW(model.parameters(), lr=5e-4)
 
 # Train the model
-# train_model(model, train_loader, loss_fn, optimizer, num_epochs=100, device=device)
+train_model(model, train_loader, loss_fn, optimizer, num_epochs=100, device=device)
 
 test_model(model, test_loader, device)
 
