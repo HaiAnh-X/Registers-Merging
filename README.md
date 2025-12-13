@@ -27,6 +27,7 @@ RegTome merges tokens based on their similarity, implicitly grouping parts of ob
  
     ```
     conda env create -f environment.yml
+    conda activate merge-registers
     ```
 
 
