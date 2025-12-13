@@ -49,7 +49,7 @@ RegTome merges tokens based on their similarity, implicitly grouping parts of ob
     python main.py
     ```
 
-Here are some expected results when using the timm implementation *off-the-shelf* on ImageNet-1k val using a V100:
+Here are some expected results when using the vit-reg implementation *off-the-shelf* on Cifar10 val using a P100-16GB:
 
 | Model          | original acc | original im/s |  r | RegTome acc | RegTome im/s | Improvement
 |----------------|-------------:|--------------:|:--------:|---------:|----------:|----------:|
