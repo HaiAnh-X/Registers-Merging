@@ -15,16 +15,6 @@ RegTome merges tokens based on their similarity, implicitly grouping parts of ob
 ## News
  - **[2025.12.12]** Initial release.
 
-## Installation
-See [INSTALL.md](INSTALL.md) for installation details.
-
-## Support Models
-
-This repo does not include training code. Instead, we provide a set of tools to patch existing vision transformer implementations. Then, you can use those implementations out of the box. Currently, we support the following ViT implementations:
- - [x] [🔗](#using-timm-models) [timm](https://github.com/rwightman/pytorch-image-models)
- 
-**Note:** these external implementations aren't associated with Meta in any way.
-
 ## Usage
 
 1. **Clone the repository**:
